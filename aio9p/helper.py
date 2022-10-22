@@ -1,7 +1,12 @@
 
 from itertools import chain
+from logging import getLogger, NullHandler
 
 from aio9p.constant import ENCODING
+
+NULL_LOGGER = getLogger('')
+NULL_LOGGER.setLevel('DEBUG')
+NULL_LOGGER.addHandler(NullHandler())
 
 def mkqid(mode, base, version=0):
     if isinstance(base, int):
@@ -21,12 +26,12 @@ def extract_bytefields(msg, offset, count):
 def _gen_bytefields(msg, offset, count):
     msglen = len(msg)
     while count > 0:
-        print(f'{msglen=} {count=} {offset=}')
-        assert offset + 2 <= msglen
+        if msglen < offset + 2:
+            raise ValueError('Incomplete length field', msg, offset)
         fieldlen = extract(msg, offset, 2)
         nextoffset = offset + 2 + fieldlen
-        print(f'{msglen=} {count=} {offset=} {fieldlen=} {nextoffset=}')
-        assert nextoffset <= msglen
+        if msglen < nextoffset:
+            raise ValueError('Incomplete content field', msg, offset)
         yield msg[offset+2:nextoffset]
         offset = nextoffset
         count = count - 1
@@ -36,19 +41,17 @@ def mkfield(value, size):
     try:
         return value.to_bytes(size, byteorder='little')
     except OverflowError as e:
-        print('Overflow:', value, size)
         raise ValueError from e
 
-def mkbytefield(*payloads):
+def mkbytefield(*payloads): #TODO: Rename to mkbytefields
     total = sum(2 + len(payload) for payload in payloads)
     resfields = tuple(chain.from_iterable(
         (len(payload).to_bytes(2, byteorder='little'), payload)
         for payload in payloads
         ))
-    print(f'Bytefield: {total=} {resfields=}')
     return total, resfields
 
-def mkstrfield(*args):
+def mkstrfield(*args): #TODO: Rename to mkstrfields
     return mkbytefield(*(
         value.encode(ENCODING)
         for value in args

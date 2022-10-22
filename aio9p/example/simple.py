@@ -79,8 +79,9 @@ def mkstatlen(name):
     return 49 + len(name) + 4 + 4 + 4
 
 class Simple9P(Py9P2000):
-    def __init__(self, maxsize):
-        print('Simple9P running! Version:', self.versionstring)
+    def __init__(self, maxsize, logger=None):
+        super().__init__(maxsize, logger=logger)
+        self._logger.info('Simple9P running! Version:', self.version)
         self._fid = {}
         self._name = {
             BASEQID: BASENAME
@@ -94,35 +95,30 @@ class Simple9P(Py9P2000):
         self._content = {
             FILEQID: FILECONTENT
             }
-        self.maxsize = maxsize
         return None
     def errhandler(self, exception):
-        print('Handling exception', exception)
+        self._logger.debug('Exception: %s', exception)
         if isinstance(exception, Py9PException):
             msg = exception.args[0]
-            print('Py9PException:', msg)
+            self._logger.debug('Py9PException:', msg)
         else:
             msg = f'Exception: {exception}'
         if isinstance(msg, int):
-            errstrlen, errstrfields = mkstrfield(strerror(msg))
+            errstr = strerror(msg)
+            self._logger.debug(f'Integer exception %i, message %s', msg, errstr)
+            errstrlen, errstrfields = mkstrfield(errstr)
             errnofield = mkfield(msg, 4)
-            print(f'@@@@ {errstrlen=} {errstrfields=} {errnofield=}')
             return errstrlen + 4, RERROR, (*errstrfields, errnofield)
         bytemsg = str(msg).encode(ENCODING)
         msgfieldslen, msgfields = mkbytefield(bytemsg)
-        print(f'Error message: {msgfieldslen=} {msgfields=}')
         return msgfieldslen, RERROR, msgfields
-    async def version(self, maxsize, version):
-        print('Got version', version)
-        #TODO: Abort outstanding IO
-        if version != b'9P2000':
-            return 65535, b'unknown'
-        return 65535, b'9P2000'
+    async def maxsize_backend(self, client_maxsize):
+        return 65535
     async def attach(self, fid, afid, uname, aname):
         self._fid[fid] = BASEQID
         return BASEQID
     async def auth(self, afid, uname, aname):
-        print('Auth:', afid, uname, aname)
+        self._logger.error('Attempted auth: %s %s %s', afid, uname, aname)
         raise NotImplementedError
     async def stat(self, fid):
         qid = self._fid.get(fid)
@@ -138,14 +134,12 @@ class Simple9P(Py9P2000):
         return None
         
     async def walk(self, fid, newfid, wnames):
-        print('Simple walk:', wnames, newfid, fid)
+        self._logger.debug('Simple walk from %s to %s: %s', fid, newfid, wnames)
         if not wnames:
-            print('Empty wnames', self._fid)
             oldqid = self._fid.get(fid)
             if oldqid is None:
                 raise Py9PBadFID
             self._fid[newfid] = oldqid
-            print('Returning empty tuple')
             return ()
         dirqid = self._fid.get(fid)
         wqids = []
@@ -171,7 +165,7 @@ class Simple9P(Py9P2000):
     async def read(self, fid, offset, count):
         qid = self._fid.get(fid)
         if qid is None:
-            print('Bad FID', fid, self._fid)
+            self._logger.error('Bad Read FID: %s %s', fid, self._fid)
             raise Py9PBadFID
         content = self._content.get(qid)
         if content is not None:
@@ -180,7 +174,6 @@ class Simple9P(Py9P2000):
         if dircontent is None:
             raise Py9PBadFID
         diroffset = 0
-        print('Reading dir', offset, dircontent)
         for entryname, entryqid in sorted(dircontent.items()):
             if diroffset == offset:
                 entrycontent = self._content.get(entryqid)
@@ -196,32 +189,29 @@ class Simple9P(Py9P2000):
         qid = self._fid.get(fid)
         fc = self._content.get(qid)
         if fc is None: #TODO: Writes to directories should give different error
-            print('Bad FID', fid, self._fid)
+            self._logger.error('Bad Write FID: %s %s', fid, self._fid)
             raise Py9PBadFID
-        print(f'Writing: {offset=} {fc=} {data=}')
+        self._logger.debug('Writing to %s at %i for length %i : %s ', qid, offset, len(data), data)
         if len(fc) < offset:
             return 0
         self._content[qid] = fc[:offset] + data + fc[offset+len(data):]
-        print(f'Wrote: {self._content[qid]=}')
         return len(data)
     async def create(self, fid, name, perm, mode):
         qid = self._fid.get(fid)
         dircontent = self._dircontent.get(qid)
         if dircontent is None:
-            print('Bad FID', fid, self._fid)
+            self._logger.error('Bad Create FID: %s %s', fid, self._fid)
             raise Py9PBadFID
         if name in dircontent.keys():
-            print('Bad file name', name, fid, self._fid)
+            self._logger.error('Bad Create filename: %s %s %s', name, qid, dircontent)
             raise Py9PException(f'File name exists: {name}')
         newqid = mkqid(
             mode
             , int.from_bytes(max(k[5:] for k in self._name.keys()), 'little') + 1
             )
-        print(f'New qid: {newqid=}')
         dircontent[name] = newqid
         self._name[newqid] = name
-        print(f'@ @ @ @ {perm=} {mode=} {DMDIR=} {(mode&DMDIR)=} {(perm&DMDIR)=}')
-        if (perm & DMDIR):
+        if perm & DMDIR:
             self._dircontent[newqid] = {}
         else:
             self._content[newqid] = b''
