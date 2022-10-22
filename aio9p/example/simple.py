@@ -230,7 +230,15 @@ class Simple9P(Py9P2000):
     async def wstat(self, fid, stat):
         return None
     async def remove(self, fid):
-        self._fid.pop(fid, None)
+        qid = self._fid.pop(fid, None)
+        if qid is None:
+            return None
+        filename = self._name.pop(qid, None)
+        for dirc in self._dircontent.values():
+            if dirc.get(filename) == qid:
+                dirc.pop(filename)
+        self._dircontent.pop(qid, None)
+        self._content.pop(qid, None)
         return None
 
 
