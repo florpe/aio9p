@@ -1,14 +1,29 @@
 
+'''
+Various utility functions and values:
+    - Parsers and formatters
+    - Types
+    - The default NULL logger
+'''
+
 from itertools import chain
 from logging import getLogger, NullHandler
+from typing import Union, Tuple, Generator
 
 from aio9p.constant import ENCODING
+
+FieldsT = Union[Tuple[()], Tuple[bytes, ...]]
+MsgT = Tuple[int, int, FieldsT]
+
 
 NULL_LOGGER = getLogger('')
 NULL_LOGGER.setLevel('DEBUG')
 NULL_LOGGER.addHandler(NullHandler())
 
-def mkqid(mode, base, version=0):
+def mkqid(mode: int, base: Union[int, bytes], version: int = 0) -> bytes:
+    '''
+    Create a qid from a base reference, a mode, and an optional version.
+    '''
     if isinstance(base, int):
         base = base.to_bytes(8, 'little')
     return b''.join((
@@ -17,13 +32,22 @@ def mkqid(mode, base, version=0):
         , base
         ))
 
-def extract(msg, offset, size):
+def extract(msg: bytes, offset: int, size: int) -> int:
+    '''
+    Extract the field of size size at offset offset as a little-endian integer.
+    '''
     return int.from_bytes(msg[offset:offset+size], byteorder='little')
 
-def extract_bytefields(msg, offset, count):
+def extract_bytefields(msg: bytes, offset: int, count: int) -> Tuple[bytes, ...]:
+    '''
+    Extract count bytefields starting at offset offset.
+    '''
     return tuple(_gen_bytefields(msg, offset, count))
 
-def _gen_bytefields(msg, offset, count):
+def _gen_bytefields(msg: bytes, offset: int, count: int) -> Generator[bytes, None, None]:
+    '''
+    The generator version of extract_bytefields.
+    '''
     msglen = len(msg)
     while count > 0:
         if msglen < offset + 2:
@@ -37,13 +61,22 @@ def _gen_bytefields(msg, offset, count):
         count = count - 1
 
 
-def mkfield(value, size):
+def mkfield(value: int, size: int) -> bytes:
+    '''
+    Format the value value into a little-endian field of size size.
+    '''
     try:
         return value.to_bytes(size, byteorder='little')
     except OverflowError as e:
         raise ValueError from e
 
-def mkbytefield(*payloads): #TODO: Rename to mkbytefields
+def mkbytefields(*payloads: bytes) -> Tuple[int, FieldsT]:
+    '''
+    Equip the arguments with the two-byte length envelopes mandated by 9P.
+    Returns the total length and a tuple of the resulting fields. Does not join
+    envelopes with their contents - the length of the result tuple is twice the
+    argument count.
+    '''
     total = sum(2 + len(payload) for payload in payloads)
     resfields = tuple(chain.from_iterable(
         (len(payload).to_bytes(2, byteorder='little'), payload)
@@ -51,9 +84,11 @@ def mkbytefield(*payloads): #TODO: Rename to mkbytefields
         ))
     return total, resfields
 
-def mkstrfield(*args): #TODO: Rename to mkstrfields
-    return mkbytefield(*(
+def mkstrfields(*args: str) -> Tuple[int, FieldsT]:
+    '''
+    Like mkbytefields, but applies UTF-8 formatting.
+    '''
+    return mkbytefields(*(
         value.encode(ENCODING)
         for value in args
         ))
-

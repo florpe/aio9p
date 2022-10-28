@@ -1,19 +1,31 @@
 
-from asyncio import create_task, Protocol
+'''
+The interface between aio9p and asyncio.
+'''
 
+from asyncio import create_task, Task, Protocol
 
 import aio9p.constant as c
-from aio9p.helper import extract, extract_bytefields, mkfield, mkbytefield, NULL_LOGGER
-from aio9p.stat import Py9PStat
+from aio9p.helper import extract, mkfield, NULL_LOGGER, MsgT
 
 class Py9PException(Exception):
+    '''
+    Base class for Py9P-specific exceptions.
+    '''
     pass
 
 Py9PBadFID = Py9PException('Bad fid!')
 
 class Py9PProtocol(Protocol):
+    '''
+    An asyncio protocol subclass for the 9P protocol.
+    '''
     _logger = NULL_LOGGER
     def __init__(self, implementation, logger=None):
+        '''
+        Replacing the default null logger and setting a tiny default
+        message size.
+        '''
         if logger is not None:
             self._logger = logger
         self.maxsize = 256 #Default, overwritten by version negotiation
@@ -26,19 +38,32 @@ class Py9PProtocol(Protocol):
 
         return None
     def connection_made(self, transport):
+        '''
+        Storing the transport.
+        '''
         self._logger.info('Connection made')
         self._transport = transport
         return None
     def connection_lost(self, exc):
+        '''
+        Notify, nothing else.
+        '''
         if exc is None:
             self._logger.info('Connection terminated')
         else:
             self._logger.info('Lost connection: %s', exc)
         return None
     def eof_received(self):
+        '''
+        Notify, nothing else.
+        '''
         self._logger.info('End of file received')
         return None
     def data_received(self, data):
+        '''
+        Parses message headers and sets up tasks to process
+        the bodies. FLUSH is handled immediately.
+        '''
         self._logger.debug('Data received: %s', data)
         buffer = self._buffer + data
         buflen = len(buffer)
@@ -62,12 +87,13 @@ class Py9PProtocol(Protocol):
             )
             tasks[msgtag] = task
             task.add_done_callback(lambda x: self.sendmsg(msgtag, x))
-            #Check if Flush
-            #Create task - or: Chop out size, msgt, tag, and queue
             msgstart = msgend
         self._buffer = buffer[msgstart:]
         return None
-    def flush(self, tag, oldtag):
+    def flush(self, tag: bytes, oldtag: bytes) -> None:
+        '''
+        Cancels the task indicated by FLUSH, if necessary.
+        '''
         task = self._tasks.pop(oldtag, None)
         if task is None or task.cancelled():
             pass
@@ -79,7 +105,11 @@ class Py9PProtocol(Protocol):
             , tag
             ))
         return None
-    def sendmsg(self, msgtag, task):
+    def sendmsg(self, msgtag: bytes, task: Task):
+        '''
+        Callback for tasks that are done. Do nothing if cancelled, send an
+        error message if an exception occurred, otherwise send the result.
+        '''
         if task.cancelled():
             self._logger.debug('Sending message: cancelled task %s', msgtag)
             return None
@@ -89,7 +119,7 @@ class Py9PProtocol(Protocol):
             raise ValueError(msgtag, task, task_stored)
         exception = task.exception()
         if exception is None:
-            reslen, restype, fields = task.result()
+            restype, reslen, fields = task.result()
         else:
             self._logger.info('Sending message: Got exception %s %s %s', msgtag, exception, task)
             reslen, restype, fields = self.implementation.errhandler(exception)
@@ -98,196 +128,26 @@ class Py9PProtocol(Protocol):
             , mkfield(restype, 1)
             , msgtag
             ) + fields
-        binres = b''.join(res)
-        self._logger.debug('Sending message: %s', binres.hex())
-        self._transport.write(binres)
-        self._logger.debug('Sent')
+        self._logger.debug('Sending message: %s', b''.join(res).hex())
+        self._transport.writelines(res)
         return None
 
-
-class Py9P2000():
-    version = b'9P2000'
-    _logger = NULL_LOGGER
-    def __init__(self, maxsize, *args, logger=None, **kwargs):
-        if logger is not None:
-            self._logger = logger
-        self.maxsize = maxsize
-        return None
-    def errhandler(self, exception):
-        errstr = str(exception).encode(c.ENCODING)[:self.maxsize-9]
-        self._logger.debug('Got exception: %s %s', errstr, exception)
-        return c.RERROR, 2 + len(errstr), (mkfield(len(errstr), 2), errstr)
-    async def process_msg(self, msgtype, msgbody):
-        self._logger.debug('Processing: %s %s %s', msgtype, c.TRNAME.get(msgtype), msgbody.hex())
-        dispatcher = {
-            c.TVERSION: self._fmt_version
-            , c.TATTACH: self._fmt_attach
-            , c.TSTAT: self._fmt_stat
-            , c.TCLUNK: self._fmt_clunk
-            , c.TWALK: self._fmt_walk
-            , c.TOPEN: self._fmt_open
-            , c.TREAD: self._fmt_read
-            , c.TWRITE: self._fmt_write
-            , c.TCREATE: self._fmt_create
-            , c.TWSTAT: self._fmt_wstat
-            , c.TREMOVE: self._fmt_remove
-            }
-        processor = dispatcher.get(msgtype)
-        if processor is None:
-            self._logger.debug('Unknown message type %s', msgtype)
-            raise NotImplementedError
-        res = await processor(msgbody)
-        self._logger.debug('Replying with message: %s', res)
-        return res
-
-
-    async def _fmt_version(self, msgbody):
-        #TODO: Abort outstanding IO
-        maxsize = extract(msgbody, 0, 4)
-        versionlength = extract(msgbody, 4, 2)
-        if len(msgbody) < 6 + versionlength:
-            self._logger.error('Message body too short for version string')
-            raise ValueError(msgbody)
-        version = msgbody[6:6+versionlength]
-        if version != self.version: #TODO: Check behaviour here
-            srvverlen, srvverfields = mkbytefield(b'unknown')
-            return 4 + srvverlen, c.RVERSION, (mkfield(256, 4), *srvverfields)
-        srvmax = await self.maxsize_backend(maxsize)
-        self.maxsize = min(maxsize, srvmax)
-        srvverlen, srvverfields = mkbytefield(self.version)
-        return 4 + srvverlen, c.RVERSION, (
-            srvmax.to_bytes(4, 'little')
-            , *srvverfields
-            )
-    async def maxsize_backend(self, client_maxsize):
+class Py9P():
+    '''
+    A base class for Py9P implementations that are meant to interoperate
+    with Py9PProtocol.
+    '''
+    async def process_msg(
+        self
+        , msgtype: int
+        , msgbody: bytes
+        ) -> MsgT:
         '''
-        Calculates the backend's maximum message size. The implementation will
-        transmit the minimum of client and backend size.
-
-        The default here calculates the smallest power of two less than the
-        client maximum. It can and probably should be overridden.
+        Exactly what it says on the tin.
         '''
-        res = 1024
-        while res < client_maxsize:
-            res = res << 1
-        return res >> 1
-
-    async def _fmt_attach(self, msgbody):
-        fid = msgbody[0:4]
-        afid = msgbody[4:8]
-        unamelen = extract(msgbody, 8, 2)
-        uname = msgbody[10:10+unamelen]
-
-        anamelen = extract(msgbody, 10+unamelen, 2)
-        aname = msgbody[10+unamelen:12+anamelen]
-
-        qid = await self.attach(fid, afid, uname, aname)
-
-        return 13, c.RATTACH, (qid,)
-    async def attach(self, fid, afid, uname, aname):
         raise NotImplementedError
-
-    async def _fmt_auth(self, msgbody):
-        afid = msgbody[0:4]
-        unamelen = extract(msgbody, 4, 2)
-        uname = msgbody[6:6+unamelen]
-
-        anamelen = extract(msgbody, 6+unamelen, 2)
-        aname = msgbody[8+unamelen:8+unamelen+anamelen]
-
-        aqid = await self.auth(afid, uname, aname)
-
-        return 13, c.RAUTH, (aqid,)
-    async def auth(self, afid, uname, aname):
-        raise NotImplementedError
-
-    async def _fmt_stat(self, msgbody):
-        fid = msgbody[0:4]
-        statres = await self.stat(fid)
-        statbytes = statres.to_bytes(with_envelope=True)
-        return len(statbytes), c.RSTAT, (statbytes,)
-    async def stat(self, fid):
-        raise NotImplementedError
-
-    async def _fmt_clunk(self, msgbody):
-        fid = msgbody[0:4]
-        await self.clunk(fid)
-        return 0, c.RCLUNK, ()
-    async def clunk(self, fid):
-        raise NotImplementedError
-
-    async def _fmt_walk(self, msgbody):
-        fid = msgbody[0:4]
-        newfid = msgbody[4:8]
-        count = extract(msgbody, 8, 2)
-        try:
-            wnames = extract_bytefields(msgbody, 10, count)
-        except ValueError:
-            self._logger.debug('Could not build walknames: Count %s, %s', count, msgbody[10:].hex())
-            raise
-        qids = await self.walk(fid, newfid, wnames)
-        if count and not qids:
-            errmsg = b'No such file!'
-            errenvelope = mkfield(13, 2)
-            return 15, c.RERROR, (errenvelope, errmsg)
-        qidcount = len(qids)
-        return 2 + 13*qidcount, c.RWALK, (mkfield(qidcount, 2),) + qids
-    async def walk(self, fid, newfid, wnames):
-        raise NotImplementedError
-
-    async def _fmt_open(self, msgbody):
-        fid = msgbody[0:4]
-        mode = extract(msgbody, 4, 1)
-        qid, iounit = await self.open(fid, mode)
-        return 17, c.ROPEN, (qid, mkfield(iounit, 4))
-    async def open(self, fid, mode):
-        raise NotImplementedError
-
-    async def _fmt_read(self, msgbody):
-        fid = msgbody[0:4]
-        offset = extract(msgbody, 4, 8)
-        count = extract(msgbody, 12, 4)
-        resdata = await self.read(fid, offset, count)
-        #TODO: Length overflow checking
-        resdatalen = len(resdata)
-        return 4 + resdatalen, c.RREAD, (mkfield(resdatalen, 4), resdata)
-    async def read(self, fid, offset, count):
-        raise NotImplementedError
-
-    async def _fmt_write(self, msgbody):
-        fid = msgbody[0:4]
-        offset = extract(msgbody, 4, 8)
-        count = extract(msgbody, 12, 4)
-        #TODO: Check that count matches the size
-        data = msgbody[16:16+count]
-        rescount = await self.write(fid, offset, data)
-        return 4, c.RWRITE, (mkfield(rescount, 4),)
-    async def write(self, fid, offset, data):
-        raise NotImplementedError
-
-    async def _fmt_create(self, msgbody):
-        fid = msgbody[0:4]
-        namelen = extract(msgbody, 4, 2)
-        name = msgbody[6:6+namelen]
-
-        perm = extract(msgbody, 6+namelen, 4)
-        mode = extract(msgbody, 10+namelen, 1)
-        qid, iounit = await self.create(fid, name, perm, mode)
-        return 17, c.RCREATE, (qid, mkfield(iounit, 4))
-    async def create(self, fid, name, perm, mode):
-        raise NotImplementedError
-
-    async def _fmt_wstat(self, msgbody):
-        fid = msgbody[0:4]
-        stat = Py9PStat.from_bytes(msgbody, 6)
-        await self.wstat(fid, stat)
-        return 0, c.RWSTAT, ()
-    async def wstat(self, fid, stat):
-        raise NotImplementedError
-
-    async def _fmt_remove(self, msgbody):
-        fid = msgbody[0:4]
-        await self.remove(fid)
-        return 0, c.RREMOVE, ()
-    async def remove(self, fid):
+    def errhandler(self, exception: BaseException) -> MsgT:
+        '''
+        Exactly what it says on the tin.
+        '''
         raise NotImplementedError

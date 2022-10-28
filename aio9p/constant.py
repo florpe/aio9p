@@ -1,3 +1,8 @@
+
+'''
+A central reference for the constants used by 9P.
+'''
+
 ENCODING = 'utf-8'
 
 # QID types
@@ -21,6 +26,12 @@ DMTMP = QTTMP << 24
 DMSYMLINK = QTSYMLINK << 24
 DMLINK = QTLINK << 24
 DMFILE = QTFILE << 24
+# 9P2000.u extensions
+U_DMDEVICE =  1 << 23
+U_DMNAMEDPIPE = 1 << 21
+U_DMSOCKET = 1 << 20
+U_DMSETUID = 1 << 19
+U_DMSETGID = 1 << 18
 
 # QID types as single bytes
 QTByteDIR = QTDIR.to_bytes(1, 'little')

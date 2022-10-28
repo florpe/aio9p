@@ -1,10 +1,17 @@
 
+'''
+Py9P stat structs.
+'''
+
 from dataclasses import dataclass, asdict
 
 from aio9p.helper import extract, mkfield
 
 @dataclass
-class Py9PStat:
+class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
+    '''
+    A class to implement the Py9P2000 stat struct.
+    '''
     p9type: int # [2:4]
     p9dev: int # [4:8]
     p9qid: bytes # [8:21]
@@ -18,12 +25,21 @@ class Py9PStat:
     p9muid: bytes # [s]
 
     def size(self):
+        '''
+        Size calculation that respects the various envelopes.
+        '''
         return 49 + len(self.p9name) + len(self.p9uid) + len(self.p9gid) + len(self.p9muid)
     @staticmethod
     def from_stat(stat, qid):
+        '''
+        Create an instance from a Python Stat object.
+        '''
         raise NotImplementedError
     @staticmethod
     def from_bytes(inpt, offset):
+        '''
+        Parser.
+        '''
         nameoffset = offset + 41
         namelen = extract(inpt, nameoffset, 2)
         uidoffset = nameoffset + 2 + namelen
@@ -32,7 +48,7 @@ class Py9PStat:
         gidlen = extract(inpt, gidoffset, 2)
         muidoffset = gidoffset + 2 + gidlen
         muidlen = extract(inpt, muidoffset, 2)
-        return Py9PStat(
+        return Py9P2000Stat(
             p9type=extract(inpt, offset+2, 2)
             , p9dev=extract(inpt, offset+4, 4)
             , p9qid=inpt[offset+8:offset+21]
@@ -46,6 +62,9 @@ class Py9PStat:
             , p9muid=inpt[muidoffset+2:muidoffset+2+muidlen]
             )
     def to_bytes(self, with_envelope=False):
+        '''
+        Formatter.
+        '''
         namelen = len(self.p9name)
         uidlen = len(self.p9uid)
         gidlen = len(self.p9gid)
@@ -72,4 +91,47 @@ class Py9PStat:
             , self.p9muid
             ))
     def to_dict(self):
+        '''
+        Convenience method that returns the instance data in dict form.
+        '''
+        return asdict(self)
+
+@dataclass
+class Py9P2000uStat: # pylint: disable=too-many-instance-attributes
+    '''
+    A class to implement the Py9P2000 stat struct.
+    '''
+    p9type: int # [2:4]
+    p9dev: int # [4:8]
+    p9qid: bytes # [8:21]
+    p9mode: int # [21:25]
+    p9atime: int # [25:29]
+    p9mtime: int # [29:33]
+    p9length: int # [33:41]
+    p9name: bytes # [s]
+    p9uid: bytes # [s]
+    p9gid: bytes # [s]
+    p9muid: bytes # [s]
+
+    @staticmethod
+    def from_stat(stat, qid):
+        '''
+        Create an instance from a Python Stat object.
+        '''
+        raise NotImplementedError
+    @staticmethod
+    def from_bytes(inpt, offset):
+        '''
+        Parser.
+        '''
+        raise NotImplementedError
+    def to_bytes(self, with_envelope=False):
+        '''
+        Formatter.
+        '''
+        raise NotImplementedError
+    def to_dict(self):
+        '''
+        Convenience method that returns the instance data in dict form.
+        '''
         return asdict(self)

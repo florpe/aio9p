@@ -1,16 +1,19 @@
 
 from dataclasses import asdict
 
-from aio9p.constant import QTDIR, QTFILE
+from aio9p.constant import DMDIR
+from aio9p.helper import mkqid
 from aio9p.stat import Py9PStat
 
 
-QID = QTDIR + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00\x00\x00\x00\x00'
+# QID = QTByteDIR + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00\x00\x00\x00\x00'
+MODE = DMDIR | 0o777
+QID = mkqid(MODE, b'\x00\x00\x00\x00\x00\x00\x00\x00')
 STAT = Py9PStat(
     p9type=0
     , p9dev=0
     , p9qid=QID
-    , p9mode=int.from_bytes(b'\xff\xf0\x00'+QTDIR, 'little')
+    , p9mode=MODE
     , p9atime=0
     , p9mtime=0
     , p9length=0
