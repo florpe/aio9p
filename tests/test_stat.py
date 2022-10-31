@@ -3,13 +3,13 @@ from dataclasses import asdict
 
 from aio9p.constant import DMDIR
 from aio9p.helper import mkqid
-from aio9p.stat import Py9PStat
+from aio9p.stat import Py9P2000Stat
 
 
 # QID = QTByteDIR + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00\x00\x00\x00\x00'
 MODE = DMDIR | 0o777
 QID = mkqid(MODE, b'\x00\x00\x00\x00\x00\x00\x00\x00')
-STAT = Py9PStat(
+STAT = Py9P2000Stat(
     p9type=0
     , p9dev=0
     , p9qid=QID
@@ -25,7 +25,7 @@ STAT = Py9PStat(
 
 def test_identity():
     stat_serialized = STAT.to_bytes()
-    stat_parsed = Py9PStat.from_bytes(stat_serialized, 0)
+    stat_parsed = Py9P2000Stat.from_bytes(stat_serialized, 0)
     print('@')
     print('@  Serialized once:', stat_serialized.hex())
     print('@ Serialized twice:', stat_parsed.to_bytes().hex())
