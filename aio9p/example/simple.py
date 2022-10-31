@@ -10,7 +10,7 @@ from os import strerror
 from aio9p.constant import QTByteDIR, DMDIR, QTByteFILE, DMFILE, RERROR, ENCODING
 from aio9p.helper import mkbytefields, mkstrfields, mkqid, mkfield
 from aio9p.protocol import Py9PException, Py9PBadFID
-from aio9p.implementation import Py9P2000
+from aio9p.dialect import Py9P2000
 from aio9p.stat import Py9P2000Stat
 
 from aio9p.example import example_main
