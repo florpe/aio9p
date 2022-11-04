@@ -67,8 +67,8 @@ def mkfield(value: int, size: int) -> bytes:
     '''
     try:
         return value.to_bytes(size, byteorder='little')
-    except OverflowError as e:
-        raise ValueError from e
+    except (AttributeError, OverflowError, ValueError) as e:
+        raise ValueError('Failed to convert field', value, size) from e
 
 def mkbytefields(*payloads: bytes) -> Tuple[int, FieldsT]:
     '''
@@ -77,7 +77,7 @@ def mkbytefields(*payloads: bytes) -> Tuple[int, FieldsT]:
     envelopes with their contents - the length of the result tuple is twice the
     argument count.
     '''
-    total = sum(2 + len(payload) for payload in payloads)
+    total = sum((2 + len(payload) for payload in payloads))
     resfields = tuple(chain.from_iterable(
         (len(payload).to_bytes(2, byteorder='little'), payload)
         for payload in payloads

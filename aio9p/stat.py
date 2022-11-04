@@ -7,6 +7,7 @@ from dataclasses import dataclass, asdict
 
 from aio9p.helper import extract, mkfield, extract_bytefields
 
+
 @dataclass
 class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
     '''
@@ -24,16 +25,55 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
     p9gid: bytes # [s]
     p9muid: bytes # [s]
 
+    _maxsizes = {
+        'p9type': 0xFFFF
+        , 'p9dev': 0xFFFFFFFF
+        , 'p9qid': None
+        , 'p9mode': 0xFFFFFFFF
+        , 'p9atime': 0xFFFFFFFF
+        , 'p9mtime': 0xFFFFFFFF
+        , 'p9length': 0xFFFFFFFFFFFFFFFF
+        , 'p9name': None
+        , 'p9uid': None
+        , 'p9gid': None
+        , 'p9muid': None
+        }
+
+    def __hash__(self):
+        '''
+        The identity of a filesystem entity is determined entirely by its qid.
+        '''
+        return hash(self.p9uid)
     def size(self):
         '''
         Size calculation that respects the various envelopes.
         '''
-        return sum(
+        return sum((
             49
             , len(self.p9name)
             , len(self.p9uid)
             , len(self.p9gid)
             , len(self.p9muid)
+            ))
+    def wstat(self, other):
+        '''
+        Return a version of `self` updated with values from `other`.
+        '''
+        if (
+            other.p9mode != self._maxsizes.get('p9mode')
+            and (self.p9mode & 0o7777000) != (other.p9mode & 0o7777000)
+            ):
+            raise ValueError('Cannot change mode', self.p9mode, other.p9mode)
+        kwargs = {}
+        for name, maxsize in self._maxsizes.items():
+            own = getattr(self, name)
+            others = getattr(other, name)
+            if maxsize is None:
+                kwargs[name] = others if others else own
+            else:
+                kwargs[name] = own if others == maxsize else others
+        return type(self)(
+            **kwargs
             )
     @staticmethod
     def from_stat(stat, qid):
@@ -111,14 +151,14 @@ class Py9P2000uStat(Py9P2000Stat): # pylint: disable=too-many-instance-attribute
         '''
         Size calculation that respects the various envelopes.
         '''
-        return sum(
+        return sum((
             63
             , len(self.p9name)
             , len(self.p9uid)
             , len(self.p9gid)
             , len(self.p9muid)
             , len(self.p9u_extension)
-            )
+            ))
     @staticmethod
     def from_stat(stat, qid):
         '''
@@ -132,7 +172,7 @@ class Py9P2000uStat(Py9P2000Stat): # pylint: disable=too-many-instance-attribute
         '''
         varfields = extract_bytefields(inpt, offset+41, 5)
         name, uid, gid, muid, extension = varfields
-        n_offset = offset + 51 + sum(len(field) for field in varfields)
+        n_offset = offset + 51 + sum((len(field) for field in varfields))
 
         return Py9P2000uStat(
             p9type=extract(inpt, offset+2, 2)

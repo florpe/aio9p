@@ -123,6 +123,7 @@ class Py9PProtocol(Protocol):
         else:
             self._logger.info('Sending message: Got exception %s %s %s', msgtag, exception, task)
             reslen, restype, fields = self.implementation.errhandler(exception)
+        #TODO: Check message size
         res = (
             mkfield(reslen + 7, 4)
             , mkfield(restype, 1)

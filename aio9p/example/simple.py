@@ -7,7 +7,7 @@ any changes to file modes.
 from errno import ENOENT
 from os import strerror
 
-from aio9p.constant import QTByteDIR, DMDIR, QTByteFILE, DMFILE, RERROR, ENCODING
+from aio9p.constant import QTByteDIR, DMDIR, DMFILE, RERROR, ENCODING
 from aio9p.helper import mkbytefields, mkstrfields, mkqid, mkfield
 from aio9p.protocol import Py9PException, Py9PBadFID
 from aio9p.dialect import Py9P2000
@@ -16,89 +16,8 @@ from aio9p.stat import Py9P2000Stat
 from aio9p.example import example_main
 
 BASEQID = QTByteDIR + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00\x00\x00\x00\x00'
-FILEQID = QTByteFILE + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00\x00\x00\x00\x00'
 
-BASENAME = b'/'
-FILENAME = b'barfile'
-FILECONTENT = b'Hello, barfilereader'
-
-BASESTAT = Py9P2000Stat(
-    p9type=0
-    , p9dev=0
-    , p9qid=BASEQID
-    , p9mode=(DMDIR | 0o777)
-    , p9atime=0
-    , p9mtime=0
-    , p9length=0
-    , p9name=BASENAME
-    , p9uid=b'root'
-    , p9gid=b'root'
-    , p9muid=b'root'
-    )
-
-'''
-def filestat(filecontent):
-    ''
-    Create a stat object based on content length.
-    ''
-    return Py9P2000Stat(
-        p9type=0
-        , p9dev=0
-        , p9qid=FILEQID
-        , p9mode=(DMFILE | 0o777)
-        , p9atime=0
-        , p9mtime=0
-        , p9length=len(filecontent)
-        , p9name=FILENAME
-        , p9uid=b'root'
-        , p9gid=b'root'
-        , p9muid=b'root'
-        )
-'''
-def mkfilestat(qid, qname, qlen):
-    '''
-    Create a stat object for a regular file.
-    '''
-    return Py9P2000Stat(
-        p9type=0
-        , p9dev=0
-        , p9qid=qid
-        , p9mode=(DMFILE | 0o777)
-        , p9atime=0
-        , p9mtime=0
-        , p9length=qlen
-        , p9name=qname
-        , p9uid=b'root'
-        , p9gid=b'root'
-        , p9muid=b'root'
-        )
-
-def mkdirstat(qid, qname):
-    '''
-    Create a stat object for a directory.
-    '''
-    return Py9P2000Stat(
-        p9type=0
-        , p9dev=0
-        , p9qid=qid
-        , p9mode=(DMDIR | 0o777)
-        , p9atime=0
-        , p9mtime=0
-        , p9length=0
-        , p9name=qname
-        , p9uid=b'root'
-        , p9gid=b'root'
-        , p9muid=b'root'
-        )
-
-def mkstatlen(name):
-    '''
-    Given a file or directory name, culate the length of the corresponding
-    stat object.
-    '''
-    return 49 + len(name) + 4 + 4 + 4
-
-class Simple9P(Py9P2000):
+class Simple9P2000(Py9P2000):
     '''
     The actual implementation.
     '''
@@ -108,21 +27,12 @@ class Simple9P(Py9P2000):
         and file.
         '''
         super().__init__(maxsize, logger=logger)
-        self._logger.info('Simple9P running! Version: %s', self.version)
+        self._logger.info('Simple9P2000 running! Version: %s', self.version)
+
         self._fid = {}
-        self._name = {
-            BASEQID: BASENAME
-            , FILEQID: FILENAME
-            }
-        self._dircontent = {
-            BASEQID: {
-                FILENAME: FILEQID
-                }
-            }
-        self._content = {
-            FILEQID: FILECONTENT
-            }
-        return None
+        self._stat = {}
+        self._content = {}
+        self._direntry = {}
     def errhandler(self, exception):
         '''
         If the error is Py9P-specific, attempt to provide a proper
@@ -145,9 +55,23 @@ class Simple9P(Py9P2000):
         return msgfieldslen, RERROR, msgfields
     async def attach(self, fid, afid, uname, aname):
         '''
-        Implementation/
+        Implementation.
         '''
         self._fid[fid] = BASEQID
+        self._direntry[BASEQID] = {}
+        self._stat[BASEQID] = Py9P2000Stat(
+            p9type=0
+            , p9dev=0
+            , p9qid=BASEQID
+            , p9mode=(DMDIR | 0o777)
+            , p9atime=0
+            , p9mtime=0
+            , p9length=0
+            , p9name=b'/'
+            , p9uid=b'root'
+            , p9gid=b'root'
+            , p9muid=b'root'
+            )
         return BASEQID
     async def auth(self, afid, uname, aname):
         '''
@@ -160,45 +84,47 @@ class Simple9P(Py9P2000):
         Returns a standard stat object.
         '''
         qid = self._fid.get(fid)
-        name = self._name.get(qid)
-        if name is None:
+        stat = self._stat.get(qid)
+        if stat is None:
+            self._logger.error('Bad Stat FID: %s %s %s %s %s', fid, qid, stat, self._fid, self._stat)
             raise Py9PBadFID
-        content = self._content.get(qid)
-        if content is not None:
-            return mkfilestat(qid, name, len(content))
-        return mkdirstat(qid, name)
+        self._logger.debug('Returning stat: %s', stat)
+        return stat
     async def clunk(self, fid):
         '''
         Drops the fid.
         '''
         self._fid.pop(fid, None)
         return None
-
     async def walk(self, fid, newfid, wnames):
         '''
         Implementation.
         '''
-        self._logger.debug('Simple walk from %s to %s: %s', fid, newfid, wnames)
+        qids = []
+        curr_qid = self._fid.get(fid)
+        if curr_qid is None:
+            self._logger.error('Bad Walk FID: %s %s', fid, self._fid)
+            raise Py9PBadFID
         if not wnames:
-            oldqid = self._fid.get(fid)
-            if oldqid is None:
-                raise Py9PBadFID
-            self._fid[newfid] = oldqid
+            self._fid[newfid] = curr_qid
+            self._logger.debug('Identity Walk: %s %s', fid, newfid)
             return ()
-        dirqid = self._fid.get(fid)
-        wqids = []
+        dirs = self._direntry
         for wname in wnames:
-            dircontent = self._dircontent.get(dirqid, {})
-            wqid = dircontent.get(wname)
-            if wqid is None:
+            dircontent = dirs.get(curr_qid, {})
+            next_qid = dircontent.get(wname)
+            self._logger.debug('Walking: %s %s %s', wname, next_qid, dircontent)
+            if next_qid is None:
                 break
-            wqids.append(wqid)
-            dirqid = wqid
-        if not wqids:
+            qids.append(next_qid)
+            curr_qid = next_qid
+        if not qids:
+            self._logger.debug('Walk failed: %s %s', fid, wnames)
             raise Py9PException(ENOENT)
-        if len(wqids) == len(wnames):
-            self._fid[newfid] = wqids[-1]
-        return tuple(wqids)
+        if len(wnames) == len(qids):
+            self._fid[newfid] = qids[-1]
+        self._logger.debug('Walk result: %s %s %s', fid, wnames, qids)
+        return tuple(qids)
     async def open(self, fid, mode):
         '''
         Does nothing.
@@ -215,36 +141,43 @@ class Simple9P(Py9P2000):
         if qid is None:
             self._logger.error('Bad Read FID: %s %s', fid, self._fid)
             raise Py9PBadFID
-        content = self._content.get(qid)
-        if content is not None:
-            return content[offset:offset+count]
-        dircontent = self._dircontent.get(qid)
-        if dircontent is None:
-            raise Py9PBadFID
+        filecontent = self._content.get(qid)
+        if filecontent is not None:
+            return filecontent[offset:offset+count]
+        dircontent = self._direntry.get(qid)
         diroffset = 0
-        for entryname, entryqid in sorted(dircontent.items()):
-            if diroffset == offset:
-                entrycontent = self._content.get(entryqid)
-                if entrycontent is None:
-                    return mkdirstat(entryqid, entryname).to_bytes()
-                return mkfilestat(entryqid, entryname, len(entrycontent)).to_bytes()
-            if diroffset > offset:
-                raise Py9PException('Bad directory read offset')
-            diroffset = diroffset + mkstatlen(entryname)
-        return b''
+        res = []
+        reslen = 0
+        self._logger.debug('Reading directory: %s %s %s', offset, count, dircontent)
+        for entryname, entryqid in sorted(dircontent.items()): #TODO: Check for bad offsets
+            entrystat = self._stat.get(entryqid)
+            if entrystat is None:
+                raise Py9PBadFID
+            entrysize = entrystat.size()
+            self._logger.debug('Reading entry: %s %s %s', entryname, entrysize, entrystat)
+            if offset <= diroffset and reslen + entrysize <= count:
+                res.append(entrystat)
+                reslen = reslen + entrysize
+            else:
+                break
+            diroffset = diroffset + entrysize
+        return b''.join((entrystat.to_bytes() for entrystat in res))
     async def write(self, fid, offset, data):
         '''
         Implementation.
         '''
         qid = self._fid.get(fid)
         content = self._content.get(qid)
-        if content is None:
-            self._logger.error('Bad Write FID: %s %s', fid, self._fid)
+        stat = self._stat.get(qid)
+        if content is None or stat is None:
+            self._logger.error('Bad Write FID: %s %s', fid, self._fid, self._stat)
             raise Py9PBadFID
         self._logger.debug('Writing to %s at %i for length %i : %s ', qid, offset, len(data), data)
         if len(content) < offset:
             return 0
-        self._content[qid] = content[:offset] + data + content[offset+len(data):]
+        newcontent = content[:offset] + data + content[offset+len(data):]
+        self._content[qid] = newcontent
+        stat.p9length = len(newcontent)
         return len(data)
     async def create(self, fid, name, perm, mode):
         '''
@@ -252,29 +185,57 @@ class Simple9P(Py9P2000):
         greatest unused one.
         '''
         qid = self._fid.get(fid)
-        dircontent = self._dircontent.get(qid)
-        if dircontent is None:
-            self._logger.error('Bad Create FID: %s %s', fid, self._fid)
+        dircontent = self._direntry.get(qid)
+        dirstat = self._stat.get(qid)
+        if dircontent is None or dirstat is None:
+            self._logger.error('Bad Create FID: %s %s', fid, self._fid, self._stat)
             raise Py9PBadFID
         if name in dircontent.keys():
             self._logger.error('Bad Create filename: %s %s %s', name, qid, dircontent)
             raise Py9PException(f'File name exists: {name}')
         newqid = mkqid(
             mode
-            , int.from_bytes(max(k[5:] for k in self._name), 'little') + 1
+            , int.from_bytes(max(k[5:] for k in self._stat), 'little') + 1
             )
         dircontent[name] = newqid
-        self._name[newqid] = name
+        parentmode = dirstat.p9mode
         if perm & DMDIR:
-            self._dircontent[newqid] = {}
+            mode = DMDIR | ( perm & (~0o666 | (parentmode  & 0o666) ) )
+            self._direntry[newqid] = {}
         else:
+            mode = DMFILE | ( perm & (~0o777 | (parentmode  & 0o777) ) )
             self._content[newqid] = b''
+        self._stat[newqid] = Py9P2000Stat(
+            p9type=0
+            , p9dev=0
+            , p9qid=newqid
+            , p9mode=mode
+            , p9atime=0
+            , p9mtime=0
+            , p9length=0
+            , p9name=name
+            , p9uid=b'root'
+            , p9gid=b'root'
+            , p9muid=b'root'
+            )
         self._fid[fid] = newqid
-        return newqid, 0
+        return await self.open(fid, mode)
     async def wstat(self, fid, stat):
         '''
-        Does nothing.
+        Implementation.
         '''
+        qid = self._fid.get(fid)
+        estat = self._stat.get(qid)
+        if estat is None:
+            self._logger.error('Bad WStat FID: %s %s', fid, self._fid)
+            raise Py9PBadFID
+        self._logger.debug('WStat: %s %s', estat, stat)
+        try:
+            nstat = estat.wstat(stat)
+        except ValueError as e:
+            self._logger.debug('WStat update error: %s', e)
+            raise Py9PException('Bad stat update') from e
+        self._stat[qid] = nstat
         return None
     async def remove(self, fid):
         '''
@@ -283,13 +244,16 @@ class Simple9P(Py9P2000):
         qid = self._fid.pop(fid, None)
         if qid is None:
             return None
-        filename = self._name.pop(qid, None)
-        for dirc in self._dircontent.values():
+        filestat = self._stat.pop(qid, None)
+        if filestat is None:
+            return None
+        filename = filestat.p9name
+        for dirc in self._direntry.values():
             if dirc.get(filename) == qid:
                 dirc.pop(filename)
-        self._dircontent.pop(qid, None)
+        self._direntry.pop(qid, None)
         self._content.pop(qid, None)
         return None
 
 if __name__ == "__main__":
-    example_main(Simple9P)
+    example_main(Simple9P2000)
