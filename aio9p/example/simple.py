@@ -86,7 +86,10 @@ class Simple9P2000(Py9P2000):
         qid = self._fid.get(fid)
         stat = self._stat.get(qid)
         if stat is None:
-            self._logger.error('Bad Stat FID: %s %s %s %s %s', fid, qid, stat, self._fid, self._stat)
+            self._logger.error(
+                'Bad Stat FID: %s %s %s %s %s'
+                , fid, qid, stat, self._fid, self._stat
+                )
             raise Py9PBadFID
         self._logger.debug('Returning stat: %s', stat)
         return stat

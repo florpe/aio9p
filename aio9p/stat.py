@@ -25,7 +25,7 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
     p9gid: bytes = None # [s]
     p9muid: bytes = None # [s]
 
-    _sizes = {
+    fieldsizes = {
         'p9type': 2
         , 'p9dev': 4
         , 'p9qid': None
@@ -48,11 +48,11 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
         '''
         Fields that are not populated should be ignored by the protocol.
         '''
-        for fieldname, fieldsize in self._sizes.items():
+        for fieldname, fieldsize in self.fieldsizes.items():
             if getattr(self, fieldname) is not None:
                 continue
             fielddefault = b'' if fieldsize is None else (256**fieldsize) - 1
-            setattr(self, fieldname, fieldefault)
+            setattr(self, fieldname, fielddefault)
         return None
     def to_dict(self, filtered=False):
         '''
@@ -61,7 +61,7 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
         res = asdict(self)
         if not filtered:
             return res
-        for fieldname, fieldsize in self._sizes.items():
+        for fieldname, fieldsize in self.fieldsizes.items():
             fieldval = res[fieldname]
             if fieldsize is None:
                 if not fieldval:
@@ -73,20 +73,19 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
         '''
         Size calculation that respects the various envelopes.
         '''
-        #TODO: Maybe a generic implementation based on self._sizes ?
-        return sum((
-            49
-            , len(self.p9name)
-            , len(self.p9uid)
-            , len(self.p9gid)
-            , len(self.p9muid)
-            ))
+        total = 11 # qid length minus envelope count
+        for fieldname, fieldsize in self.fieldsizes.items():
+            if fieldsize is None:
+                total = total + 2 + len(getattr(self, fieldname))
+            else:
+                total = total + fieldsize
+        return total
     def wstat(self, other):
         '''
         Return a version of `self` updated with values from `other`.
         '''
         if (
-            other.p9mode != 256**self._sizes.get('p9mode') - 1
+            other.p9mode != 256**self.fieldsizes.get('p9mode') - 1
             and (self.p9mode & 0o7777000) != (other.p9mode & 0o7777000)
             ):
             raise ValueError('Cannot change mode via wstat', self.p9mode, other.p9mode)
@@ -158,18 +157,25 @@ class Py9P2000uStat(Py9P2000Stat): # pylint: disable=too-many-instance-attribute
     p9u_n_gid: int = None
     p9u_n_muid: int = None
 
-    def size(self):
-        '''
-        Size calculation that respects the various envelopes.
-        '''
-        return sum((
-            63
-            , len(self.p9name)
-            , len(self.p9uid)
-            , len(self.p9gid)
-            , len(self.p9muid)
-            , len(self.p9u_extension)
-            ))
+    fieldsizes = {
+        **Py9P2000Stat.fieldsizes
+        , 'p9u_extension': None
+        , 'p9u_n_uid': 4
+        , 'p9u_n_gid': 4
+        , 'p9u_n_muid': 4
+        }
+    # def size(self):
+    #     '''
+    #     Size calculation that respects the various envelopes.
+    #     '''
+    #     return sum((
+    #         63
+    #         , len(self.p9name)
+    #         , len(self.p9uid)
+    #         , len(self.p9gid)
+    #         , len(self.p9muid)
+    #         , len(self.p9u_extension)
+    #         ))
     @staticmethod
     def from_stat(stat, qid):
         '''
@@ -237,8 +243,3 @@ class Py9P2000uStat(Py9P2000Stat): # pylint: disable=too-many-instance-attribute
             , mkfield(self.p9u_n_gid, 4)
             , mkfield(self.p9u_n_muid, 4)
             ))
-    def to_dict(self):
-        '''
-        Convenience method that returns the instance data in dict form.
-        '''
-        return asdict(self)
