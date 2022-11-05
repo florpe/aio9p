@@ -8,9 +8,9 @@ from errno import ENOENT
 from os import strerror
 
 from aio9p.constant import QTByteDIR, DMDIR, DMFILE, RERROR, ENCODING
+from aio9p.dialect import Py9P2000
 from aio9p.helper import mkbytefields, mkstrfields, mkqid, mkfield
 from aio9p.protocol import Py9PException, Py9PBadFID
-from aio9p.dialect import Py9P2000
 from aio9p.stat import Py9P2000Stat
 
 from aio9p.example import example_main
@@ -33,10 +33,13 @@ class Simple9P2000(Py9P2000):
         self._stat = {}
         self._content = {}
         self._direntry = {}
+        return None
     def errhandler(self, exception):
         '''
         If the error is Py9P-specific, attempt to provide a proper
         error reply.
+        The reply format with errno is technically 9P2000.u-specific, but
+        the Linux driver appears to need it.
         '''
         self._logger.debug('Exception: %s', exception)
         if isinstance(exception, Py9PException):
