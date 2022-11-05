@@ -2,7 +2,7 @@
 
 Asyncio-based bindings for the 9P protocol. Work in progress.
 
-Working examples for the 9P2000 9P2000.u dialects are implemented in aio9p.example .
+Working examples for the 9P2000 and 9P2000.u dialects are implemented in aio9p.example .
 
 # TODO
 
