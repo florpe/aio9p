@@ -6,7 +6,7 @@ A common wrapper for the example servers.
 from asyncio import run, get_running_loop, sleep as asleep
 from logging import getLogger, StreamHandler, Formatter
 
-from aio9p.protocol import Py9PProtocol
+from aio9p.protocol import Py9PServer
 
 async def example_server(implementation):
     '''
@@ -21,7 +21,7 @@ async def example_server(implementation):
     handler.setFormatter(fmt)
     logger.addHandler(handler)
     server = await loop.create_server(
-        lambda: Py9PProtocol(implementation(65535, logger=logger), logger=logger)
+        lambda: Py9PServer(implementation(65535, logger=logger), logger=logger)
         , '127.0.0.1'
         , 8090
         )

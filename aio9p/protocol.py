@@ -3,10 +3,10 @@
 The interface between aio9p and asyncio.
 '''
 
-from asyncio import create_task, Task, Protocol
+from asyncio import create_task, Task, Protocol, Semaphore, Event
 
 import aio9p.constant as c
-from aio9p.helper import extract, mkfield, NULL_LOGGER, MsgT
+from aio9p.helper import extract, mkfield, NULL_LOGGER, MsgT, RspT
 
 class Py9PException(Exception):
     '''
@@ -16,27 +16,13 @@ class Py9PException(Exception):
 
 Py9PBadFID = Py9PException('Bad fid!')
 
-class Py9PProtocol(Protocol):
+class Py9PCommon(Protocol):
     '''
-    An asyncio protocol subclass for the 9P protocol.
+    Common ground between client and server implementations.
     '''
     _logger = NULL_LOGGER
-    def __init__(self, implementation, logger=None):
-        '''
-        Replacing the default null logger and setting a tiny default
-        message size.
-        '''
-        if logger is not None:
-            self._logger = logger
-        self.maxsize = 256 #Default, overwritten by version negotiation
-        self.implementation = implementation
-
-        self._transport = None
-
-        self._tasks = {}
-        self._buffer = b''
-
-        return None
+    _buffer = b''
+    _transport = None
     def connection_made(self, transport):
         '''
         Storing the transport.
@@ -61,34 +47,62 @@ class Py9PProtocol(Protocol):
         return None
     def data_received(self, data):
         '''
-        Parses message headers and sets up tasks to process
-        the bodies. FLUSH is handled immediately.
+        Splitting incoming data into messages and processing these.
         '''
         self._logger.debug('Data received: %s', data)
         buffer = self._buffer + data
         buflen = len(buffer)
-        tasks = self._tasks
         msgstart = 0
         while msgstart < buflen - 7:
             msgsize = extract(buffer, msgstart, 4)
             msgend = msgstart + msgsize
             if buflen < msgend:
                 break
-
             msgtype = extract(buffer, msgstart+4, 1)
             msgtag = buffer[msgstart+5:msgstart+7]
-
-            if msgtype == c.TFLUSH:
-                self.flush(msgtag, buffer[msgstart+7:msgstart+9])
-                msgstart = msgend
-                continue
-            task = create_task(
-                self.implementation.process_msg(msgtype, buffer[msgstart+7:msgend])
-            )
-            tasks[msgtag] = task
-            task.add_done_callback(lambda x: self.sendmsg(msgtag, x))
+            msgbody = buffer[msgstart+7:msgend]
+            self._process_incoming(msgtype, msgtag, msgbody)
             msgstart = msgend
         self._buffer = buffer[msgstart:]
+        return None
+    def _process_incoming(self, msgtype, msgtag, msgbody):
+        '''
+        Abstract method used to process incoming data.
+        '''
+        raise NotImplementedError
+
+class Py9PServer(Py9PCommon):
+    '''
+    An asyncio protocol subclass for the 9P protocol.
+    '''
+    def __init__(self, implementation, logger=None):
+        '''
+        Replacing the default null logger and setting a tiny default
+        message size.
+        '''
+        super().__init__()
+        if logger is not None:
+            self._logger = logger
+        self.implementation = implementation
+
+        self._transport = None
+
+        self._tasks = {}
+
+        return None
+    def _process_incoming(self, msgtype, msgtag, msgbody):
+        '''
+        Parses message headers and sets up tasks to process
+        the bodies. FLUSH is handled immediately.
+        '''
+        if msgtype == c.TFLUSH:
+            self.flush(msgtag, msgbody)
+            return None
+        task = create_task(
+            self.implementation.process_msg(msgtype, msgbody)
+            )
+        self._tasks[msgtag] = task
+        task.add_done_callback(lambda x: self.sendmsg(msgtag, x))
         return None
     def flush(self, tag: bytes, oldtag: bytes) -> None:
         '''
@@ -100,7 +114,7 @@ class Py9PProtocol(Protocol):
         else:
             task.cancel()
         self._transport.writelines((
-            mkfield(7, 7)
+            mkfield(7, 4)
             , mkfield(c.RFLUSH, 1)
             , tag
             ))
@@ -123,7 +137,6 @@ class Py9PProtocol(Protocol):
         else:
             self._logger.info('Sending message: Got exception %s %s %s', msgtag, exception, task)
             reslen, restype, fields = self.implementation.errhandler(exception)
-        #TODO: Check message size
         res = (
             mkfield(reslen + 7, 4)
             , mkfield(restype, 1)
@@ -133,10 +146,90 @@ class Py9PProtocol(Protocol):
         self._transport.writelines(res)
         return None
 
+class Py9PClient(Py9PCommon):
+    '''
+    A class for the client side of the 9P protocol.
+    '''
+    def __init__(self, logger=None, poolsize=0xFF):
+        '''
+        Replacing the default null logger and setting a tiny default
+        message size.
+        '''
+        if logger is not None:
+            self._logger = logger
+        self._transport = None
+
+        self._semaphore = Semaphore(poolsize)
+        self._tags = set(
+            mkfield(i, 2)
+            for i in range(poolsize)
+            )
+        self._event = {
+            tag: Event()
+            for tag in self._tags
+            }
+        self._result = {
+            tag: None
+            for tag in self._tags
+            }
+        return None
+    def connection_made(self, transport):
+        '''
+        Storing the transport.
+        '''
+        self._logger.info('Connection made')
+        self._transport = transport
+        return None
+    def connection_lost(self, exc):
+        '''
+        Notify, nothing else.
+        '''
+        if exc is None:
+            self._logger.info('Connection terminated')
+        else:
+            self._logger.info('Lost connection: %s', exc)
+        return None
+    def eof_received(self):
+        '''
+        Notify, nothing else.
+        '''
+        self._logger.info('End of file received')
+        return None
+    def _process_incoming(self, msgtype, msgtag, msgbody):
+        '''
+        Assign incoming messages to the correct event.
+        '''
+        if msgtag not in self._tags:
+            self._logger.warn(
+                'Unsolicited tag received: %s %s %s'
+                , msgtype, msgtag, msgbody
+                )
+            return None
+        self._result[msgtag] = (msgtype, msgbody)
+        self._event[msgtag].set()
+        return None
+    async def message(self, msg: MsgT) -> RspT:
+        '''
+        Send a message and wait for the result.
+        '''
+        msgtype, msglen, fields = msg
+        async with self._semaphore:
+            tag = self._tags.pop()
+            self._transport.writelines((
+                mkfield(msglen + 7, 4)
+                , mkfield(msgtype, 1)
+                , tag
+                ) + fields
+                )
+            await self._event[tag].wait()
+            res = self._result.pop(tag)
+            self._tags.add(tag)
+            return res
+
 class Py9P():
     '''
     A base class for Py9P implementations that are meant to interoperate
-    with Py9PProtocol.
+    with Py9PServer.
     '''
     async def process_msg(
         self

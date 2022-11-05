@@ -56,7 +56,7 @@ class Simple9P2000(Py9P2000):
         bytemsg = str(msg).encode(ENCODING)
         msgfieldslen, msgfields = mkbytefields(bytemsg)
         return msgfieldslen, RERROR, msgfields
-    async def attach(self, fid, afid, uname, aname):
+    async def attach(self, fid, __, ___, ____):
         '''
         Implementation.
         '''

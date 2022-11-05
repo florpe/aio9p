@@ -14,7 +14,7 @@ from aio9p.constant import ENCODING
 
 FieldsT = Union[Tuple[()], Tuple[bytes, ...]]
 MsgT = Tuple[int, int, FieldsT]
-
+RspT = Tuple[int, bytes]
 
 NULL_LOGGER = getLogger('')
 NULL_LOGGER.setLevel('DEBUG')
