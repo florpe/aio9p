@@ -3,7 +3,7 @@
 Py9P stat structs.
 '''
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 
 from aio9p.helper import extract, mkfield, extract_bytefields
 
@@ -13,26 +13,26 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
     '''
     A class to implement the Py9P2000 stat struct.
     '''
-    p9type: int # [2:4]
-    p9dev: int # [4:8]
-    p9qid: bytes # [8:21]
-    p9mode: int # [21:25]
-    p9atime: int # [25:29]
-    p9mtime: int # [29:33]
-    p9length: int # [33:41]
-    p9name: bytes # [s]
-    p9uid: bytes # [s]
-    p9gid: bytes # [s]
-    p9muid: bytes # [s]
+    p9type: int = None # [2:4]
+    p9dev: int = None # [4:8]
+    p9qid: bytes = None # [8:21]
+    p9mode: int = None # [21:25]
+    p9atime: int = None # [25:29]
+    p9mtime: int = None # [29:33]
+    p9length: int = None # [33:41]
+    p9name: bytes = None # [s]
+    p9uid: bytes = None # [s]
+    p9gid: bytes = None # [s]
+    p9muid: bytes = None # [s]
 
-    _maxsizes = {
-        'p9type': 0xFFFF
-        , 'p9dev': 0xFFFFFFFF
+    _sizes = {
+        'p9type': 2
+        , 'p9dev': 4
         , 'p9qid': None
-        , 'p9mode': 0xFFFFFFFF
-        , 'p9atime': 0xFFFFFFFF
-        , 'p9mtime': 0xFFFFFFFF
-        , 'p9length': 0xFFFFFFFFFFFFFFFF
+        , 'p9mode': 4
+        , 'p9atime': 4
+        , 'p9mtime': 4
+        , 'p9length': 8
         , 'p9name': None
         , 'p9uid': None
         , 'p9gid': None
@@ -44,10 +44,36 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
         The identity of a filesystem entity is determined entirely by its qid.
         '''
         return hash(self.p9uid)
+    def __post_init__(self):
+        '''
+        Fields that are not populated should be ignored by the protocol.
+        '''
+        for fieldname, fieldsize in self._sizes.items():
+            if getattr(self, fieldname) is not None:
+                continue
+            fielddefault = b'' if fieldsize is None else (256**fieldsize) - 1
+            setattr(self, fieldname, fieldefault)
+        return None
+    def to_dict(self, filtered=False):
+        '''
+        Convenience method that returns the instance data in dict form.
+        '''
+        res = asdict(self)
+        if not filtered:
+            return res
+        for fieldname, fieldsize in self._sizes.items():
+            fieldval = res[fieldname]
+            if fieldsize is None:
+                if not fieldval:
+                    res.pop(fieldname, None)
+            elif fieldval == (256**fieldsize) - 1:
+                res.pop(fieldname, None)
+        return res
     def size(self):
         '''
         Size calculation that respects the various envelopes.
         '''
+        #TODO: Maybe a generic implementation based on self._sizes ?
         return sum((
             49
             , len(self.p9name)
@@ -60,21 +86,11 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
         Return a version of `self` updated with values from `other`.
         '''
         if (
-            other.p9mode != self._maxsizes.get('p9mode')
+            other.p9mode != 256**self._sizes.get('p9mode') - 1
             and (self.p9mode & 0o7777000) != (other.p9mode & 0o7777000)
             ):
-            raise ValueError('Cannot change mode', self.p9mode, other.p9mode)
-        kwargs = {}
-        for name, maxsize in self._maxsizes.items():
-            own = getattr(self, name)
-            others = getattr(other, name)
-            if maxsize is None:
-                kwargs[name] = others if others else own
-            else:
-                kwargs[name] = own if others == maxsize else others
-        return type(self)(
-            **kwargs
-            )
+            raise ValueError('Cannot change mode via wstat', self.p9mode, other.p9mode)
+        return replace(self, **other.to_dict(filtered=True))
     @staticmethod
     def from_stat(stat, qid):
         '''
@@ -131,21 +147,16 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
             , mkfield(muidlen, 2)
             , self.p9muid
             ))
-    def to_dict(self):
-        '''
-        Convenience method that returns the instance data in dict form.
-        '''
-        return asdict(self)
 
 @dataclass
 class Py9P2000uStat(Py9P2000Stat): # pylint: disable=too-many-instance-attributes
     '''
     A class to implement the Py9P2000.u stat struct.
     '''
-    p9u_extension: bytes # [s]
-    p9u_n_uid: int
-    p9u_n_gid: int
-    p9u_n_muid: int
+    p9u_extension: bytes = None# [s]
+    p9u_n_uid: int = None
+    p9u_n_gid: int = None
+    p9u_n_muid: int = None
 
     def size(self):
         '''
