@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "aio9p"
-version = "0.1.0"
-license = "GPL-3.0-or-later"
+version = "0.2.0"
+license = "AGPL-3.0-or-later"
 description = ""
 authors = ["florp <jens.krewald@gmail.com>"]
 readme = "README.md"
