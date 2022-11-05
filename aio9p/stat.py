@@ -164,18 +164,6 @@ class Py9P2000uStat(Py9P2000Stat): # pylint: disable=too-many-instance-attribute
         , 'p9u_n_gid': 4
         , 'p9u_n_muid': 4
         }
-    # def size(self):
-    #     '''
-    #     Size calculation that respects the various envelopes.
-    #     '''
-    #     return sum((
-    #         63
-    #         , len(self.p9name)
-    #         , len(self.p9uid)
-    #         , len(self.p9gid)
-    #         , len(self.p9muid)
-    #         , len(self.p9u_extension)
-    #         ))
     @staticmethod
     def from_stat(stat, qid):
         '''

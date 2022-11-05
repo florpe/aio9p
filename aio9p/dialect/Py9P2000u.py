@@ -16,16 +16,6 @@ from aio9p.helper import (
 from aio9p.dialect.Py9P2000 import (
     Py9P2000
     , p9version
-    # #    , p9auth
-    # #    , p9attach
-    # #    , p9stat
-    # , p9clunk
-    # , p9walk
-    # , p9open
-    # , p9read
-    # , p9write
-    # #    , p9wstat
-    # , p9remove
     )
 from aio9p.stat import Py9P2000uStat
 
@@ -41,10 +31,11 @@ class Py9P2000u(Py9P2000):
     requests for the plain `9P2000` protocol and set `fallback_to_9P2000`
     accordingly.
     '''
+
     offer_fallback_to_9P2000 = False
     fallback_to_9P2000 = False
     _versionstring = b'9P2000.u'
-    # _logger = NULL_LOGGER
+
     def __init__(self, *args, **kwargs):
         '''
         Minimal setup.
@@ -69,22 +60,10 @@ class Py9P2000u(Py9P2000):
             res = await p9u_attach(self.attach_u, msgbody)
         elif msgtype == c.TSTAT:
             res = await p9u_stat(self.stat_u, msgbody)
-#        elif msgtype == c.TCLUNK:
-#            res = await p9clunk(self.clunk, msgbody)
-#        elif msgtype == c.TWALK:
-#            res = await p9walk(self.walk, msgbody)
-#        elif msgtype == c.TOPEN:
-#            res = await p9open(self.open, msgbody)
-#        elif msgtype == c.TREAD:
-#            res = await p9read(self.read, msgbody)
-#        elif msgtype == c.TWRITE:
-#            res = await p9write(self.write, msgbody)
         elif msgtype == c.TCREATE:
             res = await p9u_create(self.create_u, msgbody)
         elif msgtype == c.TWSTAT:
             res = await p9u_wstat(self.wstat_u, msgbody)
-#        elif msgtype == c.TREMOVE:
-#            res = await p9remove(self.remove, msgbody)
         else:
             raise NotImplementedError(msgtype, c.TRNAME.get(msgtype))
         self._logger.debug('Replying with message: %s %s', c.TRNAME.get(res[0]), res)
@@ -140,36 +119,6 @@ class Py9P2000u(Py9P2000):
         Abstract wstat method.
         '''
         raise NotImplementedError
-    # async def clunk(self, fid: bytes) -> None:
-    #     '''
-    #     Abstract clunk method.
-    #     '''
-    #     raise NotImplementedError
-    # async def walk(self, fid: bytes, newfid: bytes, wnames: FieldsT) -> FieldsT:
-    #     '''
-    #     Abstract walk method.
-    #     '''
-    #     raise NotImplementedError
-    # async def open(self, fid: bytes, mode: int) -> Tuple[bytes, int]:
-    #     '''
-    #     Abstract open method.
-    #     '''
-    #     raise NotImplementedError
-    # async def read(self, fid: bytes, offset: int, count: int) -> bytes:
-    #     '''
-    #     Abstract read method.
-    #     '''
-    #     raise NotImplementedError
-    # async def write(self, fid: bytes, offset: int, data: bytes) -> int:
-    #     '''
-    #     Abstract write method.
-    #     '''
-    #     raise NotImplementedError
-    # async def remove(self, fid: bytes) -> None:
-    #     '''
-    #     Abstract remove method.
-    #     '''
-    #     raise NotImplementedError
 
 def p9u_error(data: bytes, errno: int) -> MsgT:
     '''
