@@ -4,6 +4,7 @@ Py9P stat structs.
 '''
 
 from dataclasses import dataclass, asdict, replace
+from typing import Optional
 
 from aio9p.helper import extract, mkfield, extract_bytefields
 
@@ -13,17 +14,17 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
     '''
     A class to implement the Py9P2000 stat struct.
     '''
-    p9type: int = None # [2:4]
-    p9dev: int = None # [4:8]
-    p9qid: bytes = None # [8:21]
-    p9mode: int = None # [21:25]
-    p9atime: int = None # [25:29]
-    p9mtime: int = None # [29:33]
-    p9length: int = None # [33:41]
-    p9name: bytes = None # [s]
-    p9uid: bytes = None # [s]
-    p9gid: bytes = None # [s]
-    p9muid: bytes = None # [s]
+    p9type: Optional[int] = None # [2:4]
+    p9dev: Optional[int] = None # [4:8]
+    p9qid: Optional[bytes] = None # [8:21]
+    p9mode: Optional[int] = None # [21:25]
+    p9atime: Optional[int] = None # [25:29]
+    p9mtime: Optional[int] = None # [29:33]
+    p9length: Optional[int] = None # [33:41]
+    p9name: Optional[bytes] = None # [s]
+    p9uid: Optional[bytes] = None # [s]
+    p9gid: Optional[bytes] = None # [s]
+    p9muid: Optional[bytes] = None # [s]
 
     fieldsizes = {
         'p9type': 2
@@ -152,10 +153,10 @@ class Py9P2000uStat(Py9P2000Stat): # pylint: disable=too-many-instance-attribute
     '''
     A class to implement the Py9P2000.u stat struct.
     '''
-    p9u_extension: bytes = None# [s]
-    p9u_n_uid: int = None
-    p9u_n_gid: int = None
-    p9u_n_muid: int = None
+    p9u_extension: Optional[bytes] = None# [s]
+    p9u_n_uid: Optional[int] = None
+    p9u_n_gid: Optional[int] = None
+    p9u_n_muid: Optional[int] = None
 
     fieldsizes = {
         **Py9P2000Stat.fieldsizes

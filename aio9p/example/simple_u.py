@@ -26,8 +26,6 @@ class Simple9P2000u(Simple9P2000, Py9P2000u):
         '''
         super().__init__(maxsize, logger=logger)
         self.offer_fallback_to_9P2000 = True # pylint: disable=invalid-name
-        self._logger.info('Simple9P2000u running! Version: %s', self.version)
-
         self._fid = {}
         self._stat = {}
         self._content = {}

@@ -5,6 +5,9 @@ A central reference for the constants used by 9P.
 
 ENCODING = 'utf-8'
 
+NOTAG = b'\xff\xff'
+NOFID = b'\xff\xff'
+
 # QID types
 QTDIR = 1 << 7
 QTAPPEND = 1 << 6

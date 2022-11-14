@@ -54,17 +54,10 @@ STAT3 = Py9P2000Stat(
 def test_identity():
     stat_serialized = STAT.to_bytes()
     stat_parsed = Py9P2000Stat.from_bytes(stat_serialized, 0)
-    print('@')
-    print('@  Serialized once:', stat_serialized.hex())
-    print('@ Serialized twice:', stat_parsed.to_bytes().hex())
-
     pdict = asdict(stat_parsed)
     sdict = asdict(STAT)
-    for k, v in pdict.items():
-        print('@@', k, v, sdict[k])
     assert stat_parsed == STAT
     assert stat_serialized == stat_parsed.to_bytes()
 
 def test_wstat():
-    print('@ Testing wstat')
     assert STAT.wstat(STAT2) == STAT3

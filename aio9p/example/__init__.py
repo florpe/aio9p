@@ -5,25 +5,24 @@ A common wrapper for the example servers.
 
 from asyncio import run, get_running_loop, sleep as asleep
 from logging import getLogger, StreamHandler, Formatter
+from os import remove
 
-from aio9p.protocol import Py9PServer
+from aio9p.protocol import Py9PServer, Py9PClient
 
-async def example_server(implementation):
+async def example_server(logger, implementation, sockpath='./py9p.sock'):
     '''
-    Wrapper for the example servers: Setup and logging.
+    Wrapper for the example servers.
     '''
-    loop = get_running_loop()
-    logger = getLogger('example-9p')
-    handler = StreamHandler()
-    fmt = Formatter('Logger: %(message)s')
-    logger.setLevel('DEBUG')
-    handler.setLevel('DEBUG')
-    handler.setFormatter(fmt)
-    logger.addHandler(handler)
-    server = await loop.create_server(
-        lambda: Py9PServer(implementation(65535, logger=logger), logger=logger)
-        , '127.0.0.1'
-        , 8090
+    try:
+        remove(sockpath)
+    except FileNotFoundError:
+        pass
+    server = await get_running_loop().create_unix_server(
+        lambda: Py9PServer(
+            implementation(65535, logger=logger.getChild('implementation'))
+            , logger=logger.getChild('server')
+            )
+        , path=sockpath
         )
     async with server:
         await server.start_serving()
@@ -31,8 +30,39 @@ async def example_server(implementation):
         while True:
             await asleep(3600)
 
-def example_main(implementation):
+async def example_client(logger, client, sockpath='./py9p.sock'):
     '''
-    Running the server.
+    Wrapper for the example clients.
     '''
-    run(example_server(implementation))
+    async with Py9PClient(
+        logger=logger.getChild('client')
+        , remote={'path': sockpath}
+        ) as conn:
+        await client(conn)
+    return None
+
+def example_logger():
+    '''
+    Setting up a basic logger.
+    '''
+    logger = getLogger()
+    handler = StreamHandler()
+    fmt = Formatter('%(name)s: %(message)s')
+    logger.setLevel('DEBUG')
+    handler.setLevel('DEBUG')
+    handler.setFormatter(fmt)
+    logger.addHandler(handler)
+    return logger
+
+def example_main(example, client=False):
+    '''
+    Running the example.
+    '''
+    logger = example_logger()
+    if client:
+        logger.info('Running client!')
+        run(example_client(logger, example))
+    else:
+        logger.info('Running server!')
+        run(example_server(logger, example))
+    logger.info('Done!')

@@ -15,7 +15,7 @@ from aio9p.helper import (
     )
 from aio9p.dialect.Py9P2000 import (
     Py9P2000
-    , p9version
+    , p9_version
     )
 from aio9p.stat import Py9P2000uStat
 
@@ -53,7 +53,7 @@ class Py9P2000u(Py9P2000):
             , msgtype, c.TRNAME.get(msgtype), msgbody.hex()
             )
         if msgtype == c.TVERSION:
-            res = await p9version(self.version_u, msgbody)
+            res = await p9_version(self.version_u, msgbody)
         elif msgtype == c.TAUTH:
             res = await p9u_auth(self.auth_u, msgbody)
         elif msgtype == c.TATTACH:

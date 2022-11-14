@@ -27,8 +27,11 @@ class Simple9P2000(Py9P2000):
         and file.
         '''
         super().__init__(maxsize, logger=logger)
-        self._logger.info('Simple9P2000 running! Version: %s', self.version)
-
+        self._logger.info(
+                'Simple9P running! Version: %s Class: %s'
+            , self._versionstring
+            , type(self).__name__
+            )
         self._fid = {}
         self._stat = {}
         self._content = {}

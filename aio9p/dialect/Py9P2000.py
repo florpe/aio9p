@@ -38,31 +38,30 @@ class Py9P2000(Py9P):
         '''
         The central dispatch method.
         '''
-        self._logger.debug('Processing: %s %s %s', msgtype, c.TRNAME.get(msgtype), msgbody.hex())
         if msgtype == c.TVERSION:
-            res = await p9version(self.version, msgbody)
+            res = await p9_version(self.version, msgbody)
         elif msgtype == c.TAUTH:
-            res = await p9auth(self.auth, msgbody)
+            res = await p9_auth(self.auth, msgbody)
         elif msgtype == c.TATTACH:
-            res = await p9attach(self.attach, msgbody)
+            res = await p9_attach(self.attach, msgbody)
         elif msgtype == c.TSTAT:
-            res = await p9stat(self.stat, msgbody)
+            res = await p9_stat(self.stat, msgbody)
         elif msgtype == c.TCLUNK:
-            res = await p9clunk(self.clunk, msgbody)
+            res = await p9_clunk(self.clunk, msgbody)
         elif msgtype == c.TWALK:
-            res = await p9walk(self.walk, msgbody)
+            res = await p9_walk(self.walk, msgbody)
         elif msgtype == c.TOPEN:
-            res = await p9open(self.open, msgbody)
+            res = await p9_open(self.open, msgbody)
         elif msgtype == c.TREAD:
-            res = await p9read(self.read, msgbody)
+            res = await p9_read(self.read, msgbody)
         elif msgtype == c.TWRITE:
-            res = await p9write(self.write, msgbody)
+            res = await p9_write(self.write, msgbody)
         elif msgtype == c.TCREATE:
-            res = await p9create(self.create, msgbody)
+            res = await p9_create(self.create, msgbody)
         elif msgtype == c.TWSTAT:
-            res = await p9wstat(self.wstat, msgbody)
+            res = await p9_wstat(self.wstat, msgbody)
         elif msgtype == c.TREMOVE:
-            res = await p9remove(self.remove, msgbody)
+            res = await p9_remove(self.remove, msgbody)
         else:
             raise NotImplementedError(msgtype, c.TRNAME.get(msgtype))
         self._logger.debug('Replying with message: %s %s', c.TRNAME.get(res[0]), res)
@@ -137,7 +136,7 @@ class Py9P2000(Py9P):
         '''
         raise NotImplementedError
 
-def p9error(data: bytes) -> MsgT:
+def p9_error(data: bytes) -> MsgT:
     '''
     Format data as an error reply. For the Linux 9p driver it is better to use
     the 9P2000.u format which includes an additional errno field after the
@@ -145,7 +144,7 @@ def p9error(data: bytes) -> MsgT:
     '''
     return c.RERROR, *mkbytefields(data)
 
-async def p9version(
+async def p9_version(
     func: Callable[[int, bytes], Coroutine[Any, Any, Tuple[int, bytes]]]
     , msgbody: bytes
     ) -> MsgT:
@@ -163,21 +162,7 @@ async def p9version(
     srvverlen, srvverfields = mkbytefields(srvver)
     return c.RVERSION, 4 + srvverlen, (mkfield(srvmax, 4),) + srvverfields
 
-def ct_p9version(clientmax: int, clientver: bytes) -> MsgT:
-    '''
-    Create a TVERSION message body.
-    '''
-    cverlen, cverfields = mkbytefields(clientver)
-    return c.RVERSION, 4 + cverlen, (mkfield(clientmax, 4),) + cverfields
-
-def pr_p9version(msgbody: bytes) -> Tuple[int, bytes]:
-    '''
-    Parse an RVERSION message body.
-    '''
-    srvverlen = extract(msgbody, 4, 2)
-    return (extract(msgbody, 0, 4), msgbody[6:6+srvverlen])
-
-async def p9attach(
+async def p9_attach(
     func: Callable[[bytes, bytes, bytes, bytes], Coroutine[Any, Any, bytes]]
     , msgbody: bytes
     ) -> MsgT:
@@ -194,23 +179,7 @@ async def p9attach(
     qid = await func(fid, afid, uname, aname)
     return c.RATTACH, 13, (qid,)
 
-def ct_p9attach(fid: bytes, afid: bytes, uname: bytes, aname: bytes) -> MsgT:
-    '''
-    Create a TATTACH message body.
-    '''
-    bflen, bflds = mkbytefields(uname, aname)
-    return c.TATTACH, 8 + bflen, (
-        fid
-        , afid
-        ) + bflds
-
-def pr_p9attach(msgbody: bytes) -> bytes:
-    '''
-    Parse an RATTACH message body.
-    '''
-    return msgbody[:13]
-
-async def p9auth(
+async def p9_auth(
     func: Callable[[bytes, bytes, bytes], Coroutine[Any, Any, bytes]]
     , msgbody: bytes
     ) -> MsgT:
@@ -225,20 +194,7 @@ async def p9auth(
     aqid = await func(afid, uname, aname)
     return c.RAUTH, 13, (aqid,)
 
-def ct_p9auth(fid: bytes, uname: bytes, aname: bytes) -> MsgT:
-    '''
-    Create a TAUTH message body.
-    '''
-    bflen, bflds = mkbytefields(uname, aname)
-    return c.TAUTH, 8 + bflen, (fid,) + bflds
-
-def pr_p9auth(msgbody: bytes) -> bytes:
-    '''
-    Parse an RAUTH message body.
-    '''
-    return msgbody[:13]
-
-async def p9stat(
+async def p9_stat(
     func: Callable[[bytes], Coroutine[Any, Any, Py9P2000Stat]]
     , msgbody: bytes
     ) -> MsgT:
@@ -250,20 +206,7 @@ async def p9stat(
     statbytes = stat.to_bytes(with_envelope=True)
     return c.RSTAT, len(statbytes), (statbytes,)
 
-def ct_p9stat(fid: bytes) -> MsgT:
-    '''
-    Create a TSTAT message body.
-    '''
-    return c.TSTAT, 4, (fid,)
-
-def pr_p9stat(msgbody: bytes) -> Py9P2000Stat:
-    '''
-    Parse an RSTAT message body.
-    '''
-#    statlen = extract(msgbody, 0, 2)
-    return Py9P2000Stat.from_bytes(msgbody, 2)
-
-async def p9clunk(
+async def p9_clunk(
     func: Callable[[bytes], Coroutine[Any, Any, None]]
     , msgbody: bytes
     ) -> MsgT:
@@ -274,19 +217,7 @@ async def p9clunk(
     await func(fid)
     return c.RCLUNK, 0, ()
 
-def ct_p9clunk(fid: bytes) -> MsgT:
-    '''
-    Create a TCLUNK message body.
-    '''
-    return c.TCLUNK, 4, (fid,)
-
-def pr_p9clunk(_: bytes) -> None:
-    '''
-    Parse an RVERSION message body.
-    '''
-    return None
-
-async def p9walk(
+async def p9_walk(
     func: Callable[[bytes, bytes, FieldsT], Coroutine[Any, Any, FieldsT]]
     , msgbody: bytes
     ) -> MsgT:
@@ -308,28 +239,7 @@ async def p9walk(
     qidcount = len(qids)
     return c.RWALK, 2 + 13*qidcount, (mkfield(qidcount, 2),) + qids
 
-def ct_p9walk(fid: bytes, newfid: bytes, wnames: Tuple[bytes]) -> MsgT:
-    '''
-    Create a TWALK message body.
-    '''
-    wnamelen, wnamefields = mkbytefields(*wnames)
-    return c.TWALK, 10 + wnamelen, (
-        fid
-        , mkfield(newfid, 4)
-        , mkfield(len(wnames), 2)
-        ) + wnamefields
-
-def pr_p9walk(msgbody: bytes) -> Tuple[bytes]:
-    '''
-    Parse an RWALK message body.
-    '''
-    qidcount = extract(msgbody, 0, 2)
-    return tuple(
-        msgbody[2+offset,15+offset]
-        for offset in range(0, 13*qidcount, 13)
-        )
-
-async def p9open(
+async def p9_open(
     func: Callable[[bytes, int], Coroutine[Any, Any, Tuple[bytes, int]]]
     , msgbody: bytes
     ) -> MsgT:
@@ -341,22 +251,7 @@ async def p9open(
     qid, iounit = await func(fid, mode)
     return c.ROPEN, 17, (qid, mkfield(iounit, 4))
 
-def ct_p9open(fid: bytes, mode: int) -> MsgT:
-    '''
-    Create a TOPEN message body.
-    '''
-    return c.TWALK, 5, (
-        fid
-        , mkfield(mode, 1)
-        )
-
-def pr_p9open(msgbody: bytes) -> Tuple[bytes, int]:
-    '''
-    Parse an ROPEN message body.
-    '''
-    return msgbody[:13], extract(msgbody, 13, 4)
-
-async def p9read(
+async def p9_read(
     func: Callable[[bytes, int, int], Coroutine[Any, Any, bytes]]
     , msgbody: bytes
     ) -> MsgT:
@@ -370,23 +265,8 @@ async def p9read(
     resdatalen = len(resdata)
     return c.RREAD, 4 + resdatalen, (mkfield(resdatalen, 4), resdata)
 
-def ct_p9read(fid: bytes, offset: int, count: int) -> MsgT:
-    '''
-    Create a TREAD message body.
-    '''
-    return c.TREAD, 16, (
-        fid
-        , mkfield(offset, 8)
-        , mkfield(count, 4)
-        )
 
-def pr_p9read(msgbody: bytes) -> Tuple[bytes, int]:
-    '''
-    Parse an RREAD message body.
-    '''
-    return msgbody[:13], extract(msgbody, 13, 4)
-
-async def p9write(
+async def p9_write(
     func: Callable[[bytes, int, bytes], Coroutine[Any, Any, int]]
     , msgbody: bytes
     ) -> MsgT:
@@ -400,25 +280,7 @@ async def p9write(
     rescount = await func(fid, offset, data)
     return c.RWRITE, 4, (mkfield(rescount, 4),)
 
-def ct_p9write(fid: bytes, offset: int, data: bytes) -> MsgT:
-    '''
-    Create a TWRITE message body.
-    '''
-    datalen = len(data)
-    return c.TWRITE, 16 + datalen, (
-        fid
-        , mkfield(offset, 8)
-        , mkfield(datalen, 4)
-        , data
-        )
-
-def pr_p9write(msgbody: bytes) -> int:
-    '''
-    Parse an RWRITE message body.
-    '''
-    return extract(msgbody, 0, 4)
-
-async def p9create(
+async def p9_create(
     func: Callable[[bytes, bytes, int, int], Coroutine[Any, Any, Tuple[bytes, int]]]
     , msgbody: bytes
     ) -> MsgT:
@@ -434,25 +296,7 @@ async def p9create(
     qid, iounit = await func(fid, name, perm, mode)
     return c.RCREATE, 17, (qid, mkfield(iounit, 4))
 
-def ct_p9create(fid: bytes, name: bytes, perm: int, mode: int) -> MsgT:
-    '''
-    Create a TWRITE message body.
-    '''
-    namelen, namefields = mkbytefields(name)
-    return c.TWRITE, 10 + namelen, (
-        fid
-        , *namefields
-        , mkfield(perm, 4)
-        , mkfield(mode, 1)
-        )
-
-def pr_p9create(msgbody: bytes) -> Tuple[bytes, int]:
-    '''
-    Parse an RWRITE message body.
-    '''
-    return msgbody[:13], extract(msgbody, 13, 4)
-
-async def p9wstat(
+async def p9_wstat(
     func: Callable[[bytes, Py9P2000Stat], Coroutine[Any, Any, None]]
     , msgbody: bytes
     ) -> MsgT:
@@ -464,20 +308,7 @@ async def p9wstat(
     await func(fid, stat)
     return c.RWSTAT, 0, ()
 
-def ct_p9wstat(fid: bytes, stat: Py9P2000Stat) -> MsgT:
-    '''
-    Create a TWSTAT message.
-    '''
-    binstat = stat.to_bytes(with_envelope=True)
-    return c.TWSTAT, 4 + len(binstat), (fid, binstat)
-
-def pr_p9wstat(_: bytes) -> None:
-    '''
-    Parse an RWSTAT message.
-    '''
-    return None
-
-async def p9remove(
+async def p9_remove(
     func: Callable[[bytes], Coroutine[Any, Any, None]]
     , msgbody: bytes
     ) -> MsgT:
@@ -487,15 +318,3 @@ async def p9remove(
     fid = msgbody[0:4]
     await func(fid)
     return c.RREMOVE, 0, ()
-
-def ct_p9remove(fid: bytes) -> MsgT:
-    '''
-    Create a TREMOVE message.
-    '''
-    return c.TREMOVE, 4, (fid,)
-
-def pr_p9remove(_: bytes) -> None:
-    '''
-    Parse an RREMOVE message.
-    '''
-    return None
