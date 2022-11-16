@@ -66,6 +66,12 @@ class Py9P2000(Py9P):
             raise NotImplementedError(msgtype, c.TRNAME.get(msgtype))
         self._logger.debug('Replying with message: %s %s', c.TRNAME.get(res[0]), res)
         return res
+    def errhandler(self, exception):
+        '''
+        The base protocol does not support errnos.
+        '''
+        return p9_error(str(exception).encode('utf-8'))
+
     async def version(self, clientmax: int, clientver: bytes):
         '''
         A default version implementation that properly sets self.maxsize.

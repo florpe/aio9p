@@ -17,9 +17,25 @@ from aio9p.dialect.Py9P2000 import (
     Py9P2000
     , p9_version
     )
+from aio9p.protocol import Py9PException
 from aio9p.stat import Py9P2000uStat
 
 MODIFIED_MESSAGE_TYPES = {c.TVERSION, c.TAUTH, c.TATTACH, c.TSTAT, c.TCREATE, c.TWSTAT}
+
+class Py9P2000u_Exception(Py9PException):
+    '''
+    Mandatory errnos.
+    '''
+    def __init__(self, errno, *args, **kwargs):
+        '''
+        Sets errno and kwargs as attributes.
+        '''
+        super().__init__(self, errno, *args, **kwargs)
+        for k, kwarg in kwargs.items():
+            setattr(self, k, kwarg)
+        self.errno = errno
+        self.args = tuple(errno, *args)
+        return None
 
 class Py9P2000u(Py9P2000):
     '''
@@ -68,6 +84,20 @@ class Py9P2000u(Py9P2000):
             raise NotImplementedError(msgtype, c.TRNAME.get(msgtype))
         self._logger.debug('Replying with message: %s %s', c.TRNAME.get(res[0]), res)
         return res
+    def errhandler(self, exception):
+        '''
+        Attempts to provide sensible errnos.
+        '''
+        if isinstance(exception, Py9P2000u_Exception):
+            errno = exception.errno
+            msg = b''.join(
+                arg if isinstance(arg, bytes) else str(arg).encode(c.ENCODING)
+                for arg in exception.args[1:]
+                )
+        else:
+            errno = 0xFF
+            msg = str(exception).encode(c.ENCODING)
+        return p9u_error(msg, errno)
     async def version_u(self, clientmax: int, clientver: bytes):
         '''
         A default version implementation that properly sets self.maxsize and
