@@ -60,9 +60,9 @@ def example_main(example, client=False):
     '''
     logger = example_logger()
     if client:
-        logger.info('Running client!')
+        logger.info('Running client %s!', type(example).__name__)
         run(example_client(logger, example))
     else:
-        logger.info('Running server!')
+        logger.info('Running server %s!', type(example).__name__)
         run(example_server(logger, example))
     logger.info('Done!')

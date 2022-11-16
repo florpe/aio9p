@@ -75,8 +75,10 @@ class Py9P2000u(Py9P2000):
         '''
         self.maxsize = min(clientmax, self.maxsize)
         if clientver == self._versionstring:
+            self._logger.debug('Client and server version agree: %s', clientver)
             srvver = clientver
         elif self.offer_fallback_to_9P2000 and clientver == b'9P2000':
+            self._logger.debug('Falling back to %s from %s', clientver, srvver)
             srvver = clientver
             self.fallback_to_9P2000 = True
         return self.maxsize, srvver

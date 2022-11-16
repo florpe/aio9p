@@ -4,31 +4,39 @@ The interface between aio9p and asyncio.
 '''
 
 from asyncio import create_task, Task, get_running_loop, Protocol, Semaphore, Event
-from typing import Optional
+from typing import Optional, Tuple
 
 import aio9p.constant as c
-from aio9p.helper import extract, mkfield, mkbytefields, NULL_LOGGER, FieldsT, MsgT, RspT
+from aio9p.helper import (
+    extract
+    , extract_bytefields
+    , mkfield
+    , mkbytefields
+    , NULL_LOGGER
+    , FieldsT
+    , MsgT
+    , RspT
+    )
 
 class Py9PException(Exception):
     '''
     Base class for Py9P-specific exceptions.
     '''
     pass
-class Py9PClientException(Py9PException):
+class Py9PError(Py9PException):
     '''
     Client exception: Expected message type, received
     message type, and body.
     '''
-    def __init__(self, expected, received, body, *args, **kwargs):
+    def __init__(self, body, *args, **kwargs):
         '''
         Populating the fields.
         '''
-        super().__init__(expected, received, body, *args, **kwargs)
-        self.msgtype_expected = expected
-        self.msgtype_received = received
-        self.msg = body
+        super().__init__(body, *args, **kwargs)
+        for k, kwarg in kwargs.items():
+            setattr(self, k, kwarg)
+        self.body = body
         self.fields = args
-        self.mapping = kwargs
         return None
 
 Py9PBadFID = Py9PException('Bad fid!')
@@ -191,6 +199,7 @@ class Py9PClient(): # pylint: disable=too-many-instance-attributes
         self._remote = remote
         connection = Py9PClientConnection(
             logger
+            , self.errparser
             , maxsize
             , poolsize
             )
@@ -204,12 +213,28 @@ class Py9PClient(): # pylint: disable=too-many-instance-attributes
         '''
         await self.connect(self._remote)
         return self
-    async def __aexit__(self,  exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         '''
         Tears down the underlying connection.
         '''
         await self.disconnect()
         return None
+    def errparser(
+        self
+        , tmsg_type: int
+        , tmsg_fields: Tuple[bytes, ...]
+        , errmsgbody: bytes
+        ) -> Py9PError:
+        '''
+        Turns an error reply into an exception.
+        '''
+        (errmsg,) = extract_bytefields(errmsgbody, 0, 1)
+        return Py9PError(
+            errmsgbody
+            , errmsg=errmsg
+            , tmsg_type=tmsg_type
+            , tmsg_fields=tmsg_fields
+            )
     async def negotiate(
         self
         , versionstring: Optional[bytes] = None
@@ -238,6 +263,7 @@ class Py9PClientConnection(Py9PCommon): # pylint: disable=too-many-instance-attr
     def __init__( # pylint: disable=too-many-arguments
         self
         , logger
+        , errparser
         , maxsize
         , poolsize
         ):
@@ -245,6 +271,7 @@ class Py9PClientConnection(Py9PCommon): # pylint: disable=too-many-instance-attr
         Replacing the default null logger and setting a tiny default
         message size.
         '''
+        self._errparser = errparser
         self.maxsize = None
         self._maxsize_preset = maxsize
         poolsize = min(poolsize, 0xFFFF-1) #Exclude NOTAG from pool
@@ -344,7 +371,8 @@ class Py9PClientConnection(Py9PCommon): # pylint: disable=too-many-instance-attr
             await self._event[tag].wait()
             msgtype, msgbody = self._result.pop(tag)
             self._tags.add(tag)
-            #TODO: Error detection and raising
+            if msgtype == c.RERROR:
+                raise self._errparser(msgtype, fields, msgbody)
             return msgtype, msgbody
     async def negotiate(
         self

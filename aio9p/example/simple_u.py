@@ -19,7 +19,7 @@ class Simple9P2000u(Simple9P2000, Py9P2000u):
     '''
     The actual implementation.
     '''
-    def __init__(self, maxsize, logger=None, ):
+    def __init__(self, maxsize, *_, logger=None, **__):
         '''
         Setup that populates the instance with a default base directory
         and file.
@@ -30,6 +30,7 @@ class Simple9P2000u(Simple9P2000, Py9P2000u):
         self._stat = {}
         self._content = {}
         self._direntry = {}
+        return None
     def errhandler(self, exception):
         '''
         If the error is Py9P-specific, attempt to provide a proper

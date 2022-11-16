@@ -5,7 +5,7 @@ are provided as functions instead of methods to enable reuse by
 other versions of the protocol.
 '''
 
-from typing import Tuple, overload
+from typing import Tuple
 
 import aio9p.constant as c
 from aio9p.dialect.client.Py9P2000 import Py9P2000Client, p9_wstat
