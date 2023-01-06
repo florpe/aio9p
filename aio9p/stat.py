@@ -74,7 +74,7 @@ class Py9P2000Stat: # pylint: disable=too-many-instance-attributes
         '''
         Size calculation that respects the various envelopes.
         '''
-        total = 11 # qid length minus envelope count
+        total = 0 # qid length minus envelope count
         for fieldname, fieldsize in self.fieldsizes.items():
             if fieldsize is None:
                 total = total + 2 + len(getattr(self, fieldname))

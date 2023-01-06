@@ -17,7 +17,7 @@ MsgT = Tuple[int, int, FieldsT]
 RspT = Tuple[int, bytes]
 
 NULL_LOGGER = getLogger('')
-NULL_LOGGER.setLevel('DEBUG')
+NULL_LOGGER.setLevel('CRITICAL')
 NULL_LOGGER.addHandler(NullHandler())
 
 def mkqid(mode: int, base: Union[int, bytes], version: int = 0) -> bytes:
