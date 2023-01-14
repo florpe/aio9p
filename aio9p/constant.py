@@ -8,6 +8,12 @@ ENCODING = 'utf-8'
 NOTAG = b'\xff\xff'
 NOFID = b'\xff\xff'
 
+# Open modes
+OREAD = 0
+OWRITE = 1
+ORDWR = 2
+OEXEC = 3
+
 # QID types
 QTDIR = 1 << 7
 QTAPPEND = 1 << 6

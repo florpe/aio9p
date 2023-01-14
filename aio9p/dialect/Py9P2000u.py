@@ -34,7 +34,7 @@ class Py9P2000u_Exception(Py9PException):
         for k, kwarg in kwargs.items():
             setattr(self, k, kwarg)
         self.errno = errno
-        self.args = tuple(errno, *args)
+        self.args = (errno, *args)
         return None
 
 class Py9P2000u(Py9P2000):
