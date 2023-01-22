@@ -55,10 +55,10 @@ class Simple9P2000(Py9P2000):
             self._logger.debug('Integer exception %i, message %s', msg, errstr)
             errstrlen, errstrfields = mkstrfields(errstr)
             errnofield = mkfield(msg, 4)
-            return errstrlen + 4, RERROR, (*errstrfields, errnofield)
+            return RERROR, errstrlen + 4, (*errstrfields, errnofield)
         bytemsg = str(msg).encode(ENCODING)
         msgfieldslen, msgfields = mkbytefields(bytemsg)
-        return msgfieldslen, RERROR, msgfields
+        return RERROR, msgfieldslen, msgfields
     async def attach(self, fid, __, ___, ____):
         '''
         Implementation.

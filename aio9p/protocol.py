@@ -167,7 +167,7 @@ class Py9PServer(Py9PCommon):
             restype, reslen, fields = task.result()
         else:
             self._logger.info('Sending message: Got exception %s %s %s', msgtag, exception, task)
-            reslen, restype, fields = self.implementation.errhandler(exception)
+            restype, reslen, fields = self.implementation.errhandler(exception)
         res = (
             mkfield(reslen + 7, 4)
             , mkfield(restype, 1)

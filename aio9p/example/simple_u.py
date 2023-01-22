@@ -55,7 +55,7 @@ class Simple9P2000u(Simple9P2000, Py9P2000u):
         errstrlen, errstrfields = mkstrfields(errstr)
         errnofield = mkfield(errno, 4)
         self._logger.debug('Error message formatting: %s %s', errstrfields, errstrlen)
-        return errstrlen + 4, RERROR, (*errstrfields, errnofield)
+        return RERROR, errstrlen + 4, (*errstrfields, errnofield)
     async def attach_u(self, fid, afid, uname, aname, n_uname): # pylint: disable=too-many-arguments
         '''
         Implementation.
