@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3 - 2023-01-22
+
+* Error handling now follows the same return value conventions as the non-error path.
+* The NULL\_LOGGER log level now properly prevents logging output.
+* Miscellaneous error handling fixes.
+
 ## 0.3.0 - 2022-11-16
 
 Client support.
